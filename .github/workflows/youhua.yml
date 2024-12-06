@@ -105,7 +105,6 @@ jobs:
     - name: 下载依赖
       run: |
         echo "【步骤7】下载依赖】"
-        ls -al $GITHUB_WORKSPACE
         cp -f $GITHUB_WORKSPACE/660x.config $GITHUB_WORKSPACE/openwrt/.config
         cd openwrt
         make defconfig
