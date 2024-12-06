@@ -29,7 +29,7 @@ jobs:
     steps:
     - name: 检查服务器配置（初始化前）
       run: |
-        echo "【步骤1】检查服务器配置（初始化前）"
+        echo "【步骤1】检查服务器配置（初始化前】"
         echo "CPU物理数量: $(cat /proc/cpuinfo | grep 'physical id' | sort | uniq | wc -l)"
         echo "CPU核心信息: $(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c)"
         echo "内存信息:"
@@ -55,7 +55,7 @@ jobs:
 
     - name: 检查服务器配置（初始化后）
       run: |
-        echo "【步骤3】检查服务器配置（初始化后）"
+        echo "【步骤3】检查服务器配置（初始化后】"
         echo "CPU物理数量: $(cat /proc/cpuinfo | grep 'physical id' | sort | uniq | wc -l)"
         echo "CPU核心信息: $(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c)"
         echo "内存信息:"
@@ -67,7 +67,7 @@ jobs:
     - name: 克隆源码
       working-directory: /workdir
       run: |
-        echo "【步骤4】克隆源码"
+        echo "【步骤4】克隆源码】"
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
         sudo mkdir -p -m 777 /mnt/openwrt/{dl,feeds,staging_dir}
@@ -84,11 +84,12 @@ jobs:
         key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
         restore-keys: |
           ${{ runner.os }}-openwrt-${{ env.DEVICE }}-
-          echo "完成：缓存恢复✅"
+      run: |
+        echo "完成：缓存恢复✅"
 
     - name: 配置 Feeds
       run: |
-        echo "【步骤5】配置 Feeds"
+        echo "【步骤5】配置 Feeds】"
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
@@ -96,26 +97,26 @@ jobs:
 
     - name: 修改 Lan IP 和修复版本
       run: |
-        echo "【步骤6】修改 Lan IP 和修复版本"
+        echo "【步骤6】修改 Lan IP 和修复版本】"
         cd openwrt
         sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
         echo "完成：Lan IP 修改✅"
 
     - name: 下载依赖
       run: |
-       cp -f $GITHUB_WORKSPACE/660x.config $GITHUB_WORKSPACE/openwrt/.config
-       cd openwrt
-       make defconfig
-       make download -j$(nproc)
-       find dl -size -1024c -exec ls -l {} \;
-       find dl -size -1024c -exec rm -f {} \;
-         echo "完成：依赖下载✅"
-
-
+        echo "【步骤7】下载依赖】"
+        ls -al $GITHUB_WORKSPACE
+        cp -f $GITHUB_WORKSPACE/660x.config $GITHUB_WORKSPACE/openwrt/.config
+        cd openwrt
+        make defconfig
+        make download -j$(nproc)
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+        echo "完成：依赖下载✅"
 
     - name: 编译固件
       run: |
-        echo "【步骤8】编译固件"
+        echo "【步骤8】编译固件】"
         cd openwrt
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
@@ -123,35 +124,7 @@ jobs:
         make -j$(nproc) V=s
         ccache -s
         echo "完成：固件编译✅"
+---
+主要修复缩减。
 
-    - name: 整理输出文件
-      run: |
-        echo "【步骤9】整理输出文件"
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        echo "完成：输出文件整理✅"
-
-    - name: 保存缓存
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.CCACHE_DIR }}
-        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
-         echo "完成：缓存保存✅"
-
-    - name: 上传输出文件
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
-        path: openwrt/bin
-         echo "完成：输出文件上传✅"
-
-    - name: 发布固件至 Release
-      uses: ncipollo/release-action@v1
-      with:
-        tag: "${{ env.DEVICE }}--${{ env.FILE_DATE }}"
-        artifacts: "openwrt/bin/targets/*/*/*"
-        body: |
-          # 未测试×
-          IP: 192.168.0.1 | Password: Password
-          插件: htop iperf3 lm-sensors passwall tailscale ipv6helper ddns-go mosdns mwol
-          echo "完成：发布至 Release✅"
+是“再执行”。
