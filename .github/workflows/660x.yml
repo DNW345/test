@@ -1,0 +1,127 @@
+name: cr660x
+
+on:
+  schedule:
+    - cron: 0 15 */10 * *
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: 'SSH connection to Actions'
+        required: false
+        default: 'false'
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: 660x.config
+  TZ: Asia/Shanghai
+  DEVICE: lean660x
+  UPLOAD_OUTPUT: true
+  CCACHE_DIR: /workdir/openwrt/.ccache
+
+jobs:
+  zly660x:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: 检查服务器配置
+      run: |
+        echo "若分配的服务器性能不足，务必及时取消，重新运行！"
+        echo -e "------------------------------- CPU信息 -------------------------------\n"
+        echo "CPU物理数量:$(cat /proc/cpuinfo| grep "physical id"| sort| uniq| wc -l)"
+        echo -e "CPU核心及版本信息: $(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
+        echo -e "------------------------------- 内存信息 -------------------------------\n"
+        sudo lshw -short -C memory | grep GiB
+        echo -e "\n------------------------------- 磁盘信息 -------------------------------\n"
+        df -Th
+
+    - name: 空间清理和初始化环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        docker rmi $(docker images -q) || true
+        sudo -E apt update
+        sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* snap*
+        sudo -E apt -y full-upgrade
+        sudo -E apt -y install ack antlr3 aria2 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils rsync squashfs-tools subversion swig texinfo uglifyjs unzip vim wget xmlto xxd zlib1g-dev
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+        sudo timedatectl set-timezone "Asia/Shanghai"
+
+    - name: 克隆源码
+      working-directory: /workdir
+      run: |
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        sudo mkdir -p -m 777 /mnt/openwrt/{dl,feeds,staging_dir}
+        ln -s /mnt/openwrt/dl /workdir/openwrt/dl
+        ln -s /mnt/openwrt/feeds /workdir/openwrt/feeds
+        ln -s /mnt/openwrt/staging_dir /workdir/openwrt/staging_dir
+        df -h
+
+    - name: 恢复缓存
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ runner.os }}-openwrt-660x
+        restore-keys: |
+          ${{ runner.os }}-openwrt-
+
+    - name: 配置 Feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: 修改 Lan IP 和修复版本
+      run: |
+        cd openwrt
+        sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
+
+    - name: 下载依赖
+      run: |
+        cp -f $GITHUB_WORKSPACE/660x.config $GITHUB_WORKSPACE/openwrt/.config
+        cd openwrt
+        make defconfig
+        make download -j$(nproc)
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: 编译固件
+      run: |
+        cd openwrt
+        export CCACHE_DIR=${{ env.CCACHE_DIR }}
+        export CC="ccache gcc"
+        export CXX="ccache g++"
+        make -j$(nproc)
+        ccache -s
+        echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+    - name: 整理输出文件
+      run: |
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+
+    - name: 保存缓存
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ runner.os }}-openwrt-660x
+
+    - name: 上传输出文件
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
+        path: openwrt/bin
+
+    - name: 发布固件至 Release
+      uses: ncipollo/release-action@v1
+      with:
+        tag: "${{ env.DEVICE }}--${{ env.FILE_DATE }}"
+        artifacts: "openwrt/bin/targets/*/*/*"
+        body: |
+          # 未测试×
+          IP: 192.168.0.1 | Password: Password
+          插件: htop iperf3 lm-sensors passwall tailscale ipv6helper ddns-go mwol
