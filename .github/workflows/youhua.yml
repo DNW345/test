@@ -103,13 +103,15 @@ jobs:
 
     - name: 下载依赖
       run: |
-        echo "【步骤7】下载依赖"
-        cp -f $GITHUB_WORKSPACE/660x.config $GITHUB_WORKSPACE/openwrt/.config
-        cd openwrt
-        make defconfig
-        make download -j$(nproc)
-        find dl -size -1024c -exec rm -f {} \;
-        echo "完成：依赖下载✅"
+       cp -f $GITHUB_WORKSPACE/660x.config $GITHUB_WORKSPACE/openwrt/.config
+       cd openwrt
+       make defconfig
+       make download -j$(nproc)
+       find dl -size -1024c -exec ls -l {} \;
+       find dl -size -1024c -exec rm -f {} \;
+         echo "完成：依赖下载✅"
+
+
 
     - name: 编译固件
       run: |
