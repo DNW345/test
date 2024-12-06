@@ -84,8 +84,8 @@ jobs:
         key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
         restore-keys: |
           ${{ runner.os }}-openwrt-${{ env.DEVICE }}-
-      run: |
-        echo "完成：缓存恢复✅"
+        run: |
+         echo "完成：缓存恢复✅"
 
     - name: 配置 Feeds
       run: |
@@ -124,7 +124,3 @@ jobs:
         make -j$(nproc) V=s
         ccache -s
         echo "完成：固件编译✅"
----
-主要修复缩减。
-
-是“再执行”。
