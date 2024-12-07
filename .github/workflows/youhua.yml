@@ -102,7 +102,14 @@ jobs:
         ls
         sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
         echo "完成：Lan IP 修改✅"
-
+    
+    - name: 下载依赖
+      run: |
+        cp -f $GITHUB_WORKSPACE/660x.config $GITHUB_WORKSPACE/openwrt/.config
+        cd openwrt
+        make defconfig
+        make download -j$(nproc)
+        find dl -size -1024c -exec rm -f {} \;
 
     - name: 编译固件
       run: |
