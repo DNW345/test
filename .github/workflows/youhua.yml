@@ -71,13 +71,15 @@ jobs:
           echo "Lan IP 修改完成 ✅"
 
       # 检查并加载配置文件
-      - name: 检查并加载配置文件
+      - name: 加载配置文件
         run: |
+          echo "检查配置文件是否存在..."
           if [[ ! -f $GITHUB_WORKSPACE/660x.config ]]; then
-            echo "配置文件 660x.config 不存在，退出！"
-            exit 1
+            echo "⚠️ 配置文件 660x.config 未找到，尝试搜索..."
+            find $GITHUB_WORKSPACE -name "660x.config" || true
           fi
           cp -f $GITHUB_WORKSPACE/660x.config openwrt/.config
+          echo "配置文件加载完成 ✅"
 
       # 编译固件
       - name: 编译固件
