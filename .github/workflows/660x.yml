@@ -1,14 +1,9 @@
-name: cr660x
+name: Build OpenWrt
 
 on:
   schedule:
-    - cron: 0 15 */10 * *
+    - cron: '0 15 */10 * *' # 每 10 天的 15:00 执行一次
   workflow_dispatch:
-    inputs:
-      ssh:
-        description: 'SSH connection to Actions'
-        required: false
-        default: 'false'
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
@@ -21,94 +16,112 @@ env:
   CCACHE_DIR: /workdir/openwrt/.ccache
 
 jobs:
-  zly660x:
+  build-openwrt:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-    - name: 检查服务器配置
-      run: |
-        echo "若分配的服务器性能不足，务必及时取消，重新运行！"
-        echo -e "------------------------------- CPU信息 -------------------------------\n"
-        echo "CPU物理数量:$(cat /proc/cpuinfo| grep "physical id"| sort| uniq| wc -l)"
-        echo -e "CPU核心及版本信息: $(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
-        echo -e "------------------------------- 内存信息 -------------------------------\n"
-        sudo lshw -short -C memory | grep GiB
-        echo -e "\n------------------------------- 磁盘信息 -------------------------------\n"
-        df -Th
+    - name: 检出代码
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
-    - name: 空间清理和初始化环境
+    - name: 检查配置文件是否存在
+      run: |
+        echo "【步骤1】检查配置文件"
+        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/660x.config"
+        if [[ -f "$CONFIG_FILE_PATH" ]]; then
+          echo "配置文件已找到: $CONFIG_FILE_PATH ✅"
+        else
+          echo "❌ 配置文件未找到，开始查找..."
+          CONFIG_FOUND=$(find $GITHUB_WORKSPACE -name "660x.config" -type f)
+          if [[ -n "$CONFIG_FOUND" ]]; then
+            echo "已找到配置文件路径: $CONFIG_FOUND ✅"
+            cp -f "$CONFIG_FOUND" "$GITHUB_WORKSPACE/openwrt/.config"
+            echo "成功复制配置文件到目标位置 ✅"
+          else
+            echo "❌ 未能找到 660x.config 文件，请确认文件是否存在于仓库中！"
+            exit 1
+          fi
+        fi
+
+    - name: 初始化构建环境
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        docker rmi $(docker images -q) || true
-        sudo -E apt update
-        sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* snap*
-        sudo -E apt -y full-upgrade
-        sudo -E apt -y install ack antlr3 aria2 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils rsync squashfs-tools subversion swig texinfo uglifyjs unzip vim wget xmlto xxd zlib1g-dev
+        echo "【步骤2】初始化构建环境"
+        sudo apt update
+        sudo apt -y install ack aria2 autoconf automake bzip2 ccache cmake curl flex gcc g++ git libssl-dev libtool nano rsync unzip vim wget zlib1g-dev
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
         sudo timedatectl set-timezone "Asia/Shanghai"
+        echo "构建环境初始化完成 ✅"
 
     - name: 克隆源码
       working-directory: /workdir
       run: |
+        echo "【步骤3】克隆源码"
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
         sudo mkdir -p -m 777 /mnt/openwrt/{dl,feeds,staging_dir}
         ln -s /mnt/openwrt/dl /workdir/openwrt/dl
         ln -s /mnt/openwrt/feeds /workdir/openwrt/feeds
         ln -s /mnt/openwrt/staging_dir /workdir/openwrt/staging_dir
-        df -h
+        echo "源码克隆完成 ✅"
 
     - name: 恢复缓存
       uses: actions/cache@v3
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ${{ runner.os }}-openwrt-660x
+        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
         restore-keys: |
-          ${{ runner.os }}-openwrt-
+          ${{ runner.os }}-openwrt-${{ env.DEVICE }}-
 
     - name: 配置 Feeds
       run: |
+        echo "【步骤4】配置 Feeds"
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
+        echo "Feeds 配置完成 ✅"
 
+      # 修改 Lan IP 和修复版本
     - name: 修改 Lan IP 和修复版本
       run: |
-        cd openwrt
-        sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
+          echo "【步骤5】修改 Lan IP 和修复版本"
+          cd openwrt
+          sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
+          echo "【修改完成后内容如下】"
+          grep "192.168" package/base-files/files/bin/config_generate
+          echo "Lan IP 修改完成 ✅"
 
     - name: 下载依赖
       run: |
+        echo "【步骤6】下载依赖"
         cp -f $GITHUB_WORKSPACE/660x.config $GITHUB_WORKSPACE/openwrt/.config
         cd openwrt
         make defconfig
         make download -j$(nproc)
         find dl -size -1024c -exec rm -f {} \;
+        echo "依赖下载完成 ✅"
 
     - name: 编译固件
       run: |
+        echo "【步骤7】编译固件"
         cd openwrt
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
         export CXX="ccache g++"
         make -j$(nproc)
         ccache -s
-        echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+        echo "固件编译完成 ✅"
 
-    - name: 整理输出文件
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-
-    - name: 保存缓存
+    - name: 保存编译缓存
       uses: actions/cache@v3
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ${{ runner.os }}-openwrt-660x
+        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
 
     - name: 上传输出文件
       uses: actions/upload-artifact@v3
@@ -116,12 +129,17 @@ jobs:
         name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
         path: openwrt/bin
 
+      # 发布固件到 GitHub Release
     - name: 发布固件至 Release
       uses: ncipollo/release-action@v1
       with:
-        tag: "${{ env.DEVICE }}--${{ env.FILE_DATE }}"
-        artifacts: "openwrt/bin/targets/*/*/*"
-        body: |
-          # 未测试×
-          IP: 192.168.0.1 | Password: Password
-          插件: htop iperf3 lm-sensors passwall tailscale ipv6helper ddns-go mwol
+          tag: "${{ env.TAG_NAME }}"
+          releaseName: "Release for ${{ env.DEVICE }} - ${{ env.FILE_DATE }}"
+          artifacts: "openwrt/bin/targets/*/*/*"
+          body: |
+            # OpenWrt 固件构建
+            **设备名称**: ${{ env.DEVICE }}
+            **生成日期**: ${{ env.FILE_DATE }}
+            **注意**: 此固件尚未经过测试！
+          draft: false
+          prerelease: false
