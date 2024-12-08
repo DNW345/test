@@ -133,7 +133,7 @@ jobs:
     - name: 发布固件至 Release
       uses: ncipollo/release-action@v1
       with:
-          tag: "${{ env.TAG_NAME }}"
+          tag: "${{ env.DEVICE }}--${{ env.FILE_DATE }}"
           releaseName: "Release for ${{ env.DEVICE }} - ${{ env.FILE_DATE }}"
           artifacts: "openwrt/bin/targets/*/*/*"
           body: |
