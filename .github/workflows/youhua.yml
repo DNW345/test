@@ -129,12 +129,13 @@ jobs:
     - name: 发布固件至 Release
       uses: ncipollo/release-action@v1
       with:
-        tag: "${{ env.DEVICE }}--${{ env.FILE_DATE }}"
-        artifacts: "openwrt/bin/targets/*/*/*"
+        tag: "lean660x-${{ env.FILE_DATE }}" # 确保 tag 名称有效，使用 lean660x + 日期格式
+        artifacts: "openwrt/bin/targets/*/*/*" # 匹配生成的固件文件路径
         body: |
           # OpenWrt 固件构建
-          **设备名称**: ${{ env.DEVICE }}
-          **生成日期**: ${{ env.FILE_DATE }}
+          **设备名称**: lean660x # 固定设备名称
+          **生成日期**: ${{ env.FILE_DATE }} # 动态生成的日期
           **注意**: 此固件尚未经过测试！
-        draft: false
-        prerelease: false
+        draft: false # 是否保存为草稿，false 表示直接发布
+        prerelease: false # 是否标记为预发布版本，false 表示正式版本
+
