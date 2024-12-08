@@ -1,141 +1,120 @@
-name: Build OpenWrt
+name: Build and Release OpenWrt Firmware
 
 on:
   schedule:
-    - cron: '0 15 */10 * *' # 每 10 天的 15:00 执行一次
-  workflow_dispatch:
+    - cron: '0 15 */10 * *' # 每 10 天的 15:00 自动触发
+  workflow_dispatch: # 手动触发支持
+    inputs:
+      ssh:
+        description: 'SSH connection to Actions'
+        required: false
+        default: 'false'
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede
-  REPO_BRANCH: master
-  FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 660x.config
-  TZ: Asia/Shanghai
-  DEVICE: lean660x
-  UPLOAD_OUTPUT: true
-  CCACHE_DIR: /workdir/openwrt/.ccache
+  REPO_URL: https://github.com/coolsnowwolf/lede # OpenWrt 源码地址
+  REPO_BRANCH: master # 分支
+  DEVICE: lean660x # 设备名称
+  UPLOAD_OUTPUT: true # 是否上传输出文件
 
 jobs:
-  build-openwrt:
+  build-and-release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
-    - name: 检出代码
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      # 设置环境变量
+      - name: 设置环境变量
+        run: |
+          echo "FILE_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
+          echo "TAG_NAME=${{ env.DEVICE }}-${{ github.run_id }}" >> $GITHUB_ENV
 
-    - name: 检查配置文件是否存在
-      run: |
-        echo "【步骤1】检查配置文件"
-        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/660x.config"
-        if [[ -f "$CONFIG_FILE_PATH" ]]; then
-          echo "配置文件已找到: $CONFIG_FILE_PATH ✅"
-        else
-          echo "❌ 配置文件未找到，开始查找..."
-          CONFIG_FOUND=$(find $GITHUB_WORKSPACE -name "660x.config" -type f)
-          if [[ -n "$CONFIG_FOUND" ]]; then
-            echo "已找到配置文件路径: $CONFIG_FOUND ✅"
-            cp -f "$CONFIG_FOUND" "$GITHUB_WORKSPACE/openwrt/.config"
-            echo "成功复制配置文件到目标位置 ✅"
-          else
-            echo "❌ 未能找到 660x.config 文件，请确认文件是否存在于仓库中！"
+      # 初始化环境
+      - name: 初始化环境
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt update
+          sudo apt -y install build-essential ccache libssl-dev zlib1g-dev git python3 python3-pip unzip
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
+          sudo timedatectl set-timezone "Asia/Shanghai"
+
+      # 克隆源码
+      - name: 克隆源码
+        working-directory: /workdir
+        run: |
+          git clone ${{ env.REPO_URL }} -b ${{ env.REPO_BRANCH }} openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+      # 恢复缓存
+      - name: 恢复编译缓存
+        uses: actions/cache@v3
+        with:
+          path: /workdir/openwrt/.ccache
+          key: ${{ runner.os }}-${{ env.DEVICE }}-ccache
+          restore-keys: |
+            ${{ runner.os }}-${{ env.DEVICE }}-
+
+      # 配置 Feeds
+      - name: 配置 Feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      # 修改 Lan IP 和修复版本
+      - name: 修改 Lan IP 和修复版本
+        run: |
+          echo "【步骤5】修改 Lan IP 和修复版本"
+          cd openwrt
+          sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
+          echo "【修改完成后内容如下】"
+          grep "192.168" package/base-files/files/bin/config_generate
+          echo "Lan IP 修改完成 ✅"
+
+      # 检查并加载配置文件
+      - name: 检查并加载配置文件
+        run: |
+          if [[ ! -f $GITHUB_WORKSPACE/660x.config ]]; then
+            echo "配置文件 660x.config 不存在，退出！"
             exit 1
           fi
-        fi
+          cp -f $GITHUB_WORKSPACE/660x.config openwrt/.config
 
-    - name: 初始化构建环境
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        echo "【步骤2】初始化构建环境"
-        sudo apt update
-        sudo apt -y install ack aria2 autoconf automake bzip2 ccache cmake curl flex gcc g++ git libssl-dev libtool nano rsync unzip vim wget zlib1g-dev
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
-        sudo timedatectl set-timezone "Asia/Shanghai"
-        echo "构建环境初始化完成 ✅"
+      # 编译固件
+      - name: 编译固件
+        run: |
+          cd openwrt
+          make defconfig
+          make download -j$(nproc)
+          make -j$(nproc) V=s
+          echo "完成固件编译 ✅"
 
-    - name: 克隆源码
-      working-directory: /workdir
-      run: |
-        echo "【步骤3】克隆源码"
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-        sudo mkdir -p -m 777 /mnt/openwrt/{dl,feeds,staging_dir}
-        ln -s /mnt/openwrt/dl /workdir/openwrt/dl
-        ln -s /mnt/openwrt/feeds /workdir/openwrt/feeds
-        ln -s /mnt/openwrt/staging_dir /workdir/openwrt/staging_dir
-        echo "源码克隆完成 ✅"
+      # 验证编译结果
+      - name: 验证编译结果
+        run: |
+          if [[ ! -d openwrt/bin/targets ]]; then
+            echo "未找到编译结果，退出！"
+            exit 1
+          fi
+          echo "编译结果已生成 ✅"
 
-    - name: 恢复缓存
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.CCACHE_DIR }}
-        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
-        restore-keys: |
-          ${{ runner.os }}-openwrt-${{ env.DEVICE }}-
+      # 上传编译结果为 Artifact
+      - name: 上传编译结果
+        uses: actions/upload-artifact@v3
+        with:
+          name: "OpenWrt-${{ env.DEVICE }}-${{ env.FILE_DATE }}"
+          path: openwrt/bin
 
-    - name: 配置 Feeds
-      run: |
-        echo "【步骤4】配置 Feeds"
-        cd openwrt
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
-        echo "Feeds 配置完成 ✅"
-
-    - name: 修改 Lan IP 和修复版本
-      run: |
-        echo "【步骤5】修改 Lan IP 和修复版本"
-        cd openwrt
-        sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
-        echo "Lan IP 修改完成 ✅"
-
-    - name: 下载依赖
-      run: |
-        echo "【步骤6】下载依赖"
-        cp -f $GITHUB_WORKSPACE/660x.config $GITHUB_WORKSPACE/openwrt/.config
-        cd openwrt
-        make defconfig
-        make download -j$(nproc)
-        find dl -size -1024c -exec rm -f {} \;
-        echo "依赖下载完成 ✅"
-
-    - name: 编译固件
-      run: |
-        echo "【步骤7】编译固件"
-        cd openwrt
-        export CCACHE_DIR=${{ env.CCACHE_DIR }}
-        export CC="ccache gcc"
-        export CXX="ccache g++"
-        make -j$(nproc)
-        ccache -s
-        echo "固件编译完成 ✅"
-
-    - name: 保存编译缓存
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.CCACHE_DIR }}
-        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
-
-    - name: 上传输出文件
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
-        path: openwrt/bin
-
-    - name: 发布固件至 Release
-      uses: ncipollo/release-action@v1
-      with:
-        tag: "lean660x-${{ env.FILE_DATE }}" # 确保 tag 名称有效，使用 lean660x + 日期格式
-        artifacts: "openwrt/bin/targets/*/*/*" # 匹配生成的固件文件路径
-        body: |
-          # OpenWrt 固件构建
-          **设备名称**: lean660x # 固定设备名称
-          **生成日期**: ${{ env.FILE_DATE }} # 动态生成的日期
-          **注意**: 此固件尚未经过测试！
-        draft: false # 是否保存为草稿，false 表示直接发布
-        prerelease: false # 是否标记为预发布版本，false 表示正式版本
-
+      # 发布固件到 GitHub Release
+      - name: 发布固件至 Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: "${{ env.TAG_NAME }}"
+          releaseName: "Release for ${{ env.DEVICE }} - ${{ env.FILE_DATE }}"
+          artifacts: "openwrt/bin/targets/*/*/*"
+          body: |
+            # OpenWrt 固件构建
+            **设备名称**: ${{ env.DEVICE }}
+            **生成日期**: ${{ env.FILE_DATE }}
+            **注意**: 此固件尚未经过测试！
+          draft: false
+          prerelease: false
