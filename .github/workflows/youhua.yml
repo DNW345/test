@@ -141,3 +141,16 @@ jobs:
       with:
           tag: "${{ env.DEVICE }}-${{ env.FILE_DATE }}"
           artifacts: "openwrt/bin/targets/*/*/*"
+    
+    - name: Delete Old Releases
+      uses: dev-drprasad/delete-older-releases@master
+      with:
+          keep_latest: 4
+          delete_tags: true
+
+    - name: Delete Old Workflows
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+          retain_days: 0
+          keep_minimum_runs: 1
+          
