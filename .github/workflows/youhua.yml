@@ -24,9 +24,13 @@ jobs:
     steps:
     - name: 检查配置文件是否存在
       run: |
+        echo "检查配置文件是否存在..."
         if [ ! -f $GITHUB_WORKSPACE/${{ env.CONFIG_FILE }} ]; then
-          echo "配置文件 ${{ env.CONFIG_FILE }} 不存在，退出！"
+          echo "配置文件 ${{ env.CONFIG_FILE }} 不存在！打印当前目录内容用于排查："
+          ls -al $GITHUB_WORKSPACE
           exit 1
+        else
+          echo "配置文件 ${{ env.CONFIG_FILE }} 存在 ✅"
         fi
 
     - name: 克隆源码
