@@ -129,17 +129,17 @@ jobs:
         name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
         path: openwrt/bin
 
-      # 发布固件到 GitHub Release
     - name: 发布固件至 Release
       uses: ncipollo/release-action@v1
       with:
-          tag: "${{ env.DEVICE }}--${{ env.FILE_DATE }}"
-          releaseName: "Release for ${{ env.DEVICE }} - ${{ env.FILE_DATE }}"
-          artifacts: "openwrt/bin/targets/*/*/*"
-          body: |
-            # OpenWrt 固件构建
-            **设备名称**: ${{ env.DEVICE }}
-            **生成日期**: ${{ env.FILE_DATE }}
-            **注意**: 此固件尚未经过测试！
-          draft: false
-          prerelease: false
+        tag: "${{ env.TAG_NAME }}"
+        name: "Release for ${{ env.DEVICE }} - ${{ env.FILE_DATE }}" # 发布名称
+        artifacts: "openwrt/bin/targets/*/*/*"
+        body: |
+          # OpenWrt 固件构建
+          **设备名称**: ${{ env.DEVICE }}
+          **生成日期**: ${{ env.FILE_DATE }}
+          **注意**: 此固件尚未经过测试！
+        draft: false
+        prerelease: false
+
