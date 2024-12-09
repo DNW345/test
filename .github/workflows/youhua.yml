@@ -20,7 +20,7 @@ jobs:
   build-openwrt:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write-all
 
     steps:
     - name: 检出代码
