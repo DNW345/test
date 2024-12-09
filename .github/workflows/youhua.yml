@@ -27,13 +27,13 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Delete Old Releases
+    - name: 删除旧的 Releases 保留最近4个
       uses: dev-drprasad/delete-older-releases@master
       with:
           keep_latest: 4
           delete_tags: true
 
-    - name: Delete Old Workflows
+    - name: 删除最近的workflow 保留最近1个
       uses: Mattraks/delete-workflow-runs@main
       with:
           retain_days: 0
