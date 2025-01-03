@@ -1,4 +1,4 @@
-name: Build OpenWrt X86/64
+name: Build OpenWrt x86lean
 
 on:
   schedule:
@@ -9,9 +9,9 @@ env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: X86.config
+  CONFIG_FILE: x86lean.config
   TZ: Asia/Shanghai
-  DEVICE: X86
+  DEVICE: x86lean
   UPLOAD_OUTPUT: true
   CCACHE_DIR: /workdir/openwrt/.ccache
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
@@ -42,18 +42,18 @@ jobs:
     - name: 检查配置文件是否存在
       run: |
         echo "【步骤1】检查配置文件"
-        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/X86.config"
+        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/x86lean.config"
         if [[ -f "$CONFIG_FILE_PATH" ]]; then
           echo "配置文件已找到: $CONFIG_FILE_PATH ✅"
         else
           echo "❌ 配置文件未找到，开始查找..."
-          CONFIG_FOUND=$(find $GITHUB_WORKSPACE -name "X86.config" -type f)
+          CONFIG_FOUND=$(find $GITHUB_WORKSPACE -name "x86lean.config" -type f)
           if [[ -n "$CONFIG_FOUND" ]]; then
             echo "已找到配置文件路径: $CONFIG_FOUND ✅"
             cp -f "$CONFIG_FOUND" "$GITHUB_WORKSPACE/openwrt/.config"
             echo "成功复制配置文件到目标位置 ✅"
           else
-            echo "❌ 未能找到 X86.config 文件，请确认文件是否存在于仓库中！"
+            echo "❌ 未能找到 x86lean.config 文件，请确认文件是否存在于仓库中！"
             exit 1
           fi
         fi
@@ -111,7 +111,7 @@ jobs:
     - name: 下载依赖
       run: |
         echo "【步骤6】下载依赖"
-        cp -f $GITHUB_WORKSPACE/X86.config $GITHUB_WORKSPACE/openwrt/.config
+        cp -f $GITHUB_WORKSPACE/x86lean.config $GITHUB_WORKSPACE/openwrt/.config
         cd openwrt
         make defconfig
         make download -j$(nproc)
