@@ -62,8 +62,7 @@ jobs:
       env:
           DEBIAN_FRONTEND: noninteractive
       run: |
-        # 删除所有 Docker 镜像，先检查是否有镜像
-        docker images -q | xargs -r docker rmi
+        docker rmi `docker images -q`
         sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
         sudo -E apt-mark hold grub-efi-amd64-signed
         sudo -E apt update
