@@ -129,7 +129,7 @@ jobs:
         cp -f $GITHUB_WORKSPACE/x86lean.config $GITHUB_WORKSPACE/openwrt/.config
         cd openwrt
         make defconfig
-        make download -j$(nproc)
+        make download -j$(nproc) v=s
         find dl -size -1024c -exec rm -f {} \;
         echo "依赖下载完成 ✅"
 
