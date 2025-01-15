@@ -127,11 +127,6 @@ jobs:
       run: |
         echo "【步骤6】下载依赖"
         cp -f $GITHUB_WORKSPACE/x86lean.config $GITHUB_WORKSPACE/openwrt/.config
-        cd openwrt
-        make defconfig
-        make download V=s -j$(nproc)
-        find dl -size -1024c -exec rm -f {} \;
-        echo "依赖下载完成 ✅"
 
     - name: 编译固件
       run: |
