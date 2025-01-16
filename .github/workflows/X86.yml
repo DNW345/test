@@ -126,7 +126,7 @@ jobs:
     - name: 下载依赖
       run: |
         echo "【步骤6】下载依赖"
-        cp -f $GITHUB_WORKSPACE/660x-510.config $GITHUB_WORKSPACE/openwrt/.config
+        cp -f $GITHUB_WORKSPACE/x86lean.config $GITHUB_WORKSPACE/openwrt/.config
         cd openwrt
         make defconfig
         make download -j$(nproc)
