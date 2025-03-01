@@ -82,4 +82,6 @@ jobs:
       with:
         tag: ${{ env.DEVICE }}-${{ github.run_id }}
         artifacts: /workdir/openwrt/bin/targets/x86/64/*.img.gz
-        token: ${{ secrets.GITHUB_TOKEN }}  # 直接使用 token 字段
+        token: ${{ secrets.GITHUB_TOKEN }}  # 保留 token 参数
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 添加 env 中的 GITHUB_TOKEN
