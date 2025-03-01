@@ -25,6 +25,8 @@ jobs:
       with:
         keep_latest: 4
         delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 添加 GITHUB_TOKEN
 
     - name: Delete Old Workflow Runs
       uses: Mattraks/delete-workflow-runs@main
@@ -82,6 +84,6 @@ jobs:
       with:
         tag: ${{ env.DEVICE }}-${{ github.run_id }}
         artifacts: /workdir/openwrt/bin/targets/x86/64/*.img.gz
-        token: ${{ secrets.GITHUB_TOKEN }}  # 保留 token 参数
+        token: ${{ secrets.GITHUB_TOKEN }}
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 添加 env 中的 GITHUB_TOKEN
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
