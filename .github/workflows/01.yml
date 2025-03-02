@@ -1,4 +1,4 @@
-name: test chche OpenWrt x86lean
+name: Test OpenWrt x86lean
 
 on:
   workflow_dispatch:
