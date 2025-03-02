@@ -14,7 +14,9 @@ env:
 jobs:
   build-openwrt:
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: write  # 明确指定写入权限
+      actions: write   # 确保 Action 可以运行
 
     steps:
     - name: Checkout
@@ -82,14 +84,14 @@ jobs:
 
     - name: Debug GITHUB_TOKEN
       run: |
-        echo "GITHUB_TOKEN is set to: ${GITHUB_TOKEN:0:10}..."  # 只打印前10个字符，避免泄漏
+        echo "GITHUB_TOKEN is set to: ${GITHUB_TOKEN:0:10}..."  # 打印前10个字符
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Release Firmware
-      uses: ncipollo/release-action@v1.13.0  # 指定具体版本
+      uses: softprops/action-gh-release@v1
       with:
-        tag: ${{ env.DEVICE }}-${{ github.run_id }}
-        artifacts: /workdir/openwrt/bin/targets/x86/64/*.img.gz
+        tag_name: ${{ env.DEVICE }}-${{ github.run_id }}
+        files: /workdir/openwrt/bin/targets/x86/64/*.img.gz
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 仅通过 env 传递
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
