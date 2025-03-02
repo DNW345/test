@@ -10,7 +10,8 @@ env:
   TZ: Asia/Shanghai
   DEVICE: x86lean
   CCACHE_DIR: /workdir/openwrt/.ccache
-
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+  
 jobs:
   build-openwrt:
     runs-on: ubuntu-latest
