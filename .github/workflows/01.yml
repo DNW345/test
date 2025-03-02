@@ -80,11 +80,16 @@ jobs:
         name: ${{ env.DEVICE }}-${{ github.run_id }}
         path: /workdir/openwrt/bin/targets/x86/64/*.img.gz
 
+    - name: Debug GITHUB_TOKEN
+      run: |
+        echo "GITHUB_TOKEN is set to: ${GITHUB_TOKEN:0:10}..."  # 只打印前10个字符，避免泄漏
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Release Firmware
-      uses: ncipollo/release-action@v1
+      uses: ncipollo/release-action@v1.13.0  # 指定具体版本
       with:
         tag: ${{ env.DEVICE }}-${{ github.run_id }}
         artifacts: /workdir/openwrt/bin/targets/x86/64/*.img.gz
-        token: ${{ secrets.GITHUB_TOKEN }}
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 仅通过 env 传递
