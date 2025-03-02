@@ -1,4 +1,4 @@
-name: Build OpenWrt x86lean
+name: test chche OpenWrt x86lean
 
 on:
   workflow_dispatch:
@@ -15,20 +15,20 @@ jobs:
   build-openwrt:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 确保有写入权限
-      actions: write   # 确保 Action 可以运行
+      contents: write
+      actions: write
 
     steps:
     - name: Checkout
       uses: actions/checkout@v3
 
     - name: Delete Old Releases
-      uses: dev-drprasad/delete-older-releases@v0.3.2  # 使用具体版本而不是 @master
+      uses: dev-drprasad/delete-older-releases@v0.3.2
       with:
         keep_latest: 4
         delete_tags: true
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 显式传递 GITHUB_TOKEN
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Delete Old Workflow Runs
       uses: Mattraks/delete-workflow-runs@main
@@ -36,7 +36,7 @@ jobs:
         retain_days: 0
         keep_minimum_runs: 1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 显式传递 GITHUB_TOKEN
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Free Disk Space
       run: |
@@ -48,7 +48,8 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         sudo apt update && sudo apt install -y build-essential ccache git \
           libncurses5-dev libssl-dev python3 unzip wget
-        sudo mkdir -p /workdir && sudo chown $USER:$GROUPS /workdir
+        sudo mkdir -p /workdir /workdir/openwrt/.ccache
+        sudo chown -R $USER:$GROUPS /workdir
 
     - name: Clone Repository
       run: |
@@ -74,11 +75,18 @@ jobs:
       run: |
         cd /workdir/openwrt
         export CCACHE_DIR=$CCACHE_DIR
+        export CC="ccache gcc"
+        export CXX="ccache g++"
         make download -j$(nproc)
         if [ "${{ steps.cache-ccache.outputs.cache-hit }}" != "true" ]; then
           make -j$(nproc) || make -j1 V=s
         fi
         ccache -s
+
+    - name: Check ccache Directory
+      run: |
+        ls -lh /workdir/openwrt/.ccache || echo "ccache directory is empty"
+        du -sh /workdir/openwrt/.ccache || echo "Unable to measure size"
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
@@ -88,7 +96,7 @@ jobs:
 
     - name: Debug GITHUB_TOKEN
       run: |
-        echo "GITHUB_TOKEN is set to: ${GITHUB_TOKEN:0:10}..."  # 打印前10个字符
+        echo "GITHUB_TOKEN is set to: ${GITHUB_TOKEN:0:10}..."
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
