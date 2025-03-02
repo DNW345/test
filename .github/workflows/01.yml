@@ -1,4 +1,4 @@
-name: Test OpenWrt x86lean
+name: Tset OpenWrt x86lean
 
 on:
   workflow_dispatch:
@@ -53,6 +53,7 @@ jobs:
 
     - name: Clone Repository
       run: |
+        rm -rf /workdir/openwrt  # 清理现有目录
         git clone $REPO_URL -b $REPO_BRANCH /workdir/openwrt
 
     - name: Cache ccache
