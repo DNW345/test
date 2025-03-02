@@ -10,28 +10,33 @@ env:
   TZ: Asia/Shanghai
   DEVICE: x86lean
   CCACHE_DIR: /workdir/openwrt/.ccache
-  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-  
+
 jobs:
   build-openwrt:
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: write
+      actions: write
 
     steps:
     - name: Checkout
       uses: actions/checkout@v3
 
-    - name: 删除旧的 Releases 保留最近4个
-      uses: dev-drprasad/delete-older-releases@master
+    - name: Delete Old Releases
+      uses: dev-drprasad/delete-older-releases@v0.3.2
       with:
-          keep_latest: 4
-          delete_tags: true
+        keep_latest: 4
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: 删除最近的workflow 保留最近1个
+    - name: Delete Old Workflow Runs
       uses: Mattraks/delete-workflow-runs@main
       with:
-          retain_days: 0
-          keep_minimum_runs: 1
+        retain_days: 0
+        keep_minimum_runs: 1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Free Disk Space
       run: |
@@ -43,12 +48,12 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         sudo apt update && sudo apt install -y build-essential ccache git \
           libncurses5-dev libssl-dev python3 unzip wget
-        sudo mkdir -p /workdir
+        sudo mkdir -p /workdir /workdir/openwrt/.ccache
         sudo chown -R $USER:$GROUPS /workdir
 
     - name: Clone Repository
       run: |
-        sudo rm -rf /workdir/openwrt
+        rm -rf /workdir/openwrt
         git clone $REPO_URL -b $REPO_BRANCH /workdir/openwrt
 
     - name: Cache ccache
@@ -62,11 +67,10 @@ jobs:
     - name: Configure OpenWrt
       run: |
         cd /workdir/openwrt
-        cp -f $GITHUB_WORKSPACE/x86lean.config /workdir/openwrt/.config
-        ls -l .config
+        cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
         ./scripts/feeds update -a && ./scripts/feeds install -a
         sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
-        make oldconfig
+        make defconfig
 
     - name: Download and Build
       run: |
@@ -74,11 +78,19 @@ jobs:
         export CCACHE_DIR=$CCACHE_DIR
         export CC="ccache gcc"
         export CXX="ccache g++"
-        make download -j$(nproc) V=s
+        make download -j$(nproc)
         if [ "${{ steps.cache-ccache.outputs.cache-hit }}" != "true" ]; then
-          make -j$(nproc) || make -j1 V=s
+          echo "Cache miss, performing full build..."
+          make -j$(nproc) V=s  # 完整编译
+        else
+          echo "Cache hit, skipping full build and generating images only..."
+          make -j$(nproc) V=s BUILD_IMAGE_ONLY=1  # 只生成镜像
         fi
         ccache -s
+
+    - name: Check Build Output
+      run: |
+        ls -lh /workdir/openwrt/bin/targets/x86/64/ || echo "Directory not found"
 
     - name: Check ccache Directory
       run: |
@@ -89,12 +101,18 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.DEVICE }}-${{ github.run_id }}
-        path: /workdir/openwrt/bin/targets/x86/64/*.img.gz
+        path: /workdir/openwrt/bin/targets/x86/64/*
+
+    - name: Debug GITHUB_TOKEN
+      run: |
+        echo "GITHUB_TOKEN is set to: ${GITHUB_TOKEN:0:10}..."
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Release Firmware
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ env.DEVICE }}-${{ github.run_id }}
-        files: /workdir/openwrt/bin/targets/x86/64/*.img.gz
+        files: /workdir/openwrt/bin/targets/x86/64/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
