@@ -14,9 +14,7 @@ env:
 jobs:
   build-openwrt:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write
+    permissions: write-all
 
     steps:
     - name: Checkout
