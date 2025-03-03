@@ -48,8 +48,6 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/actions/runs/$id
         done
 
-
-
     # 4. 释放磁盘空间
     - name: 释放磁盘空间
       uses: jlumbroso/free-disk-space@main
