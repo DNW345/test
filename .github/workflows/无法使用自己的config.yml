@@ -19,10 +19,10 @@ jobs:
       actions: write
 
     steps:
-    - name: Checkout
+    - name: 检出代码
       uses: actions/checkout@v3
 
-    - name: Delete Old Releases
+    - name: 删除旧的发行版
       uses: dev-drprasad/delete-older-releases@v0.3.2
       with:
         keep_latest: 4
@@ -30,7 +30,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Delete Old Workflow Runs
+    - name: 删除旧的工作流运行记录
       uses: Mattraks/delete-workflow-runs@main
       with:
         retain_days: 0
@@ -38,12 +38,12 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Free Disk Space
+    - name: 释放磁盘空间
       run: |
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo apt-get clean
 
-    - name: Setup Environment
+    - name: 设置环境
       run: |
         sudo timedatectl set-timezone "$TZ"
         sudo apt update && sudo apt install -y build-essential ccache git \
@@ -51,12 +51,12 @@ jobs:
         sudo mkdir -p /workdir /workdir/openwrt/.ccache
         sudo chown -R $USER:$GROUPS /workdir
 
-    - name: Clone Repository
+    - name: 克隆仓库
       run: |
         rm -rf /workdir/openwrt
         git clone $REPO_URL -b $REPO_BRANCH /workdir/openwrt
 
-    - name: Cache ccache
+    - name: 缓存 ccache
       id: cache-ccache
       uses: actions/cache@v3
       with:
@@ -64,15 +64,21 @@ jobs:
         key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache-${{ hashFiles(env.CONFIG_FILE) }}
         restore-keys: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-
 
-    - name: Configure OpenWrt
+    - name: 配置 OpenWrt
       run: |
         cd /workdir/openwrt
-        cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
+        # 确保配置文件存在并正确复制到 .config
+        if [ -f "$GITHUB_WORKSPACE/${{ env.CONFIG_FILE }}" ]; then
+          cp "$GITHUB_WORKSPACE/${{ env.CONFIG_FILE }}" .config
+        else
+          echo "错误：无法找到 $GITHUB_WORKSPACE/${{ env.CONFIG_FILE }} 文件"
+          exit 1
+        fi
         ./scripts/feeds update -a && ./scripts/feeds install -a
         sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
         make defconfig
 
-    - name: Download and Build
+    - name: 下载并编译
       run: |
         cd /workdir/openwrt
         export CCACHE_DIR=$CCACHE_DIR
@@ -80,36 +86,36 @@ jobs:
         export CXX="ccache g++"
         make download -j$(nproc)
         if [ "${{ steps.cache-ccache.outputs.cache-hit }}" != "true" ]; then
-          echo "Cache miss, performing full build..."
-          make -j$(nproc) V=s  # 完整编译
+          echo "缓存未命中，执行完整编译..."
+          make -j$(nproc) V=s
         else
-          echo "Cache hit, skipping full build and generating images only..."
-          make -j$(nproc) V=s BUILD_IMAGE_ONLY=1  # 只生成镜像
+          echo "缓存命中，仅生成镜像..."
+          make -j$(nproc) V=s BUILD_IMAGE_ONLY=1
         fi
         ccache -s
 
-    - name: Check Build Output
+    - name: 检查编译输出
       run: |
-        ls -lh /workdir/openwrt/bin/targets/x86/64/ || echo "Directory not found"
+        ls -lh /workdir/openwrt/bin/targets/x86/64/ || echo "未找到输出目录"
 
-    - name: Check ccache Directory
+    - name: 检查 ccache 目录
       run: |
-        ls -lh /workdir/openwrt/.ccache || echo "ccache directory is empty"
-        du -sh /workdir/openwrt/.ccache || echo "Unable to measure size"
+        ls -lh /workdir/openwrt/.ccache || echo "ccache 目录为空"
+        du -sh /workdir/openwrt/.ccache || echo "无法测量大小"
 
-    - name: Upload Artifacts
+    - name: 上传构建产物
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.DEVICE }}-${{ github.run_id }}
         path: /workdir/openwrt/bin/targets/x86/64/*
 
-    - name: Debug GITHUB_TOKEN
+    - name: 调试 GITHUB_TOKEN
       run: |
-        echo "GITHUB_TOKEN is set to: ${GITHUB_TOKEN:0:10}..."
+        echo "GITHUB_TOKEN 前10位: ${GITHUB_TOKEN:0:10}..."
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Release Firmware
+    - name: 发布固件
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ env.DEVICE }}-${{ github.run_id }}
