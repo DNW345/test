@@ -48,18 +48,7 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/actions/runs/$id
         done
 
-    # 3. 检查并复制配置文件
-    - name: 检查并复制配置文件
-      run: |
-        echo "[INFO] 检查配置文件是否存在..."
-        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/${{ env.CONFIG_FILE }}"
-        if [[ -f "$CONFIG_FILE_PATH" ]]; then
-          echo "[INFO] 配置文件已找到: $CONFIG_FILE_PATH ✅"
-          cp -f "$CONFIG_FILE_PATH" "$GITHUB_WORKSPACE/openwrt/.config"
-        else
-          echo "[ERROR] 配置文件未找到: $CONFIG_FILE_PATH ❌"
-          exit 1
-        fi
+
 
     # 4. 释放磁盘空间
     - name: 释放磁盘空间
@@ -102,6 +91,19 @@ jobs:
         ln -s /mnt/openwrt/feeds /workdir/openwrt/feeds
         ln -s /mnt/openwrt/staging_dir /workdir/openwrt/staging_dir
         echo "[INFO] 源码克隆完成 ✅"
+
+    # 3. 检查并复制配置文件
+    - name: 检查并复制配置文件
+      run: |
+        echo "[INFO] 检查配置文件是否存在..."
+        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/${{ env.CONFIG_FILE }}"
+        if [[ -f "$CONFIG_FILE_PATH" ]]; then
+          echo "[INFO] 配置文件已找到: $CONFIG_FILE_PATH ✅"
+          cp -f "$CONFIG_FILE_PATH" "$GITHUB_WORKSPACE/openwrt/.config"
+        else
+          echo "[ERROR] 配置文件未找到: $CONFIG_FILE_PATH ❌"
+          exit 1
+        fi
 
     # 7. 配置缓存
     - name: 配置编译缓存
