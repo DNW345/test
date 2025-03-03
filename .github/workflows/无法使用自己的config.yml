@@ -1,8 +1,8 @@
-name: 构建原版优化 OpenWrt x86lean 固件
+name: Build OpenWrt x86lean
 
 on:
-  # schedule:
-  #   - cron: '0 15 */15 * *' # 每 15 天的 15:00 执行一次
+ # schedule:
+   # - cron: '0 15 */15 * *' # 每 15 天的 15:00 执行一次
   workflow_dispatch:
 
 env:
@@ -12,145 +12,169 @@ env:
   CONFIG_FILE: x86lean.config
   TZ: Asia/Shanghai
   DEVICE: x86lean
-  FILE_DATE: ${{ github.run_id }}-${{ github.run_number }} # 使用 GitHub 运行 ID 和编号生成唯一标识
+  UPLOAD_OUTPUT: true
   CCACHE_DIR: /workdir/openwrt/.ccache
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
 jobs:
   build-openwrt:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # 用于发布 Release
-      actions: write # 用于删除 workflow 运行记录
+    permissions: write-all
 
     steps:
-    # 1. 检出仓库代码
-    - name: 检出仓库代码
+    - name: 检出代码
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
 
-    # 2. 清理旧的 Releases 和 Workflow 记录
-    - name: 清理旧的 Releases 和 Workflow 记录
+    - name: 删除旧的 Releases 保留最近4个
+      uses: dev-drprasad/delete-older-releases@master
+      with:
+          keep_latest: 4
+          delete_tags: true
+
+    - name: 删除最近的workflow 保留最近1个
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+          retain_days: 0
+          keep_minimum_runs: 1
+
+    - name: 检查配置文件是否存在
       run: |
-        # 删除旧的 Releases，保留最近 4 个
-        echo "[INFO] 删除旧的 Releases，保留最近 4 个..."
-        curl -X DELETE -H "Authorization: token ${{ env.GITHUB_TOKEN }}" \
-          $(curl -s -H "Authorization: token ${{ env.GITHUB_TOKEN }}" \
-          https://api.github.com/repos/${{ github.repository }}/releases | jq -r '.[] | select(.draft == false) | .url' | tail -n +5)
+        echo "【步骤1】检查配置文件"
+        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/x86lean.config"
+        if [[ -f "$CONFIG_FILE_PATH" ]]; then
+          echo "配置文件已找到: $CONFIG_FILE_PATH ✅"
+        else
+          echo "❌ 配置文件未找到，开始查找..."
+          CONFIG_FOUND=$(find $GITHUB_WORKSPACE -name "x86lean.config" -type f)
+          if [[ -n "$CONFIG_FOUND" ]]; then
+            echo "已找到配置文件路径: $CONFIG_FOUND ✅"
+            cp -f "$CONFIG_FOUND" "$GITHUB_WORKSPACE/openwrt/.config"
+            echo "成功复制配置文件到目标位置 ✅"
+          else
+            echo "❌ 未能找到 x86lean.config 文件，请确认文件是否存在于仓库中！"
+            exit 1
+          fi
+        fi
 
-        # 删除旧的 Workflow 运行记录，保留最近 1 个
-        echo "[INFO] 删除旧的 Workflow 运行记录，保留最近 1 个..."
-        run_ids=$(curl -s -H "Authorization: token ${{ env.GITHUB_TOKEN }}" \
-          https://api.github.com/repos/${{ github.repository }}/actions/runs | jq -r '.workflow_runs[] | .分类id' | tail -n +2)
-        for id in $run_ids; do
-          curl -X DELETE -H "Authorization: token ${{ env.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/runs/$id
-        done
-
-    # 4. 释放磁盘空间
-    - name: 释放磁盘空间
+    - name: Free Disk Space (Ubuntu)
       uses: jlumbroso/free-disk-space@main
       with:
+    # this might remove tools that are actually needed,
+    # if set to "true" but frees about 6 GB
         tool-cache: true
+    
+    # all of these default to true, but feel free to set to
+    # "false" if necessary for your workflow
         android: true
         dotnet: true
         haskell: true
         large-packages: true
         swap-storage: true
 
-    # 5. 初始化构建环境
     - name: 初始化构建环境
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        echo "[INFO] 初始化构建环境..."
-        sudo apt update -y && sudo apt full-upgrade -y
+        echo "【步骤2】初始化构建环境"
+        sudo apt update -y
+        sudo apt full-upgrade -y
         sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
-          genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
-          libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
-          libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
-          python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
-          swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-        sudo mkdir -p /workdir && sudo chown $USER:$GROUPS /workdir
-        sudo timedatectl set-timezone "${{ env.TZ }}"
-        echo "[INFO] 构建环境初始化完成 ✅"
+        bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
+        genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
+        libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
+        libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
+        python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
+        swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+        sudo timedatectl set-timezone "Asia/Shanghai"
+        echo "构建环境初始化完成 ✅"
 
-    # 6. 克隆源码
     - name: 克隆源码
       working-directory: /workdir
       run: |
-        echo "[INFO] 开始克隆源码..."
-        git clone ${{ env.REPO_URL }} -b ${{ env.REPO_BRANCH }} openwrt
+        echo "【步骤3】克隆源码"
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
         sudo mkdir -p -m 777 /mnt/openwrt/{dl,feeds,staging_dir}
         ln -s /mnt/openwrt/dl /workdir/openwrt/dl
         ln -s /mnt/openwrt/feeds /workdir/openwrt/feeds
         ln -s /mnt/openwrt/staging_dir /workdir/openwrt/staging_dir
-        echo "[INFO] 源码克隆完成 ✅"
+        echo "源码克隆完成 ✅"
 
-    # 3. 检查并复制配置文件
-    - name: 检查并复制配置文件
-      run: |
-        echo "[INFO] 检查配置文件是否存在..."
-        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/${{ env.CONFIG_FILE }}"
-        if [[ -f "$CONFIG_FILE_PATH" ]]; then
-          echo "[INFO] 配置文件已找到: $CONFIG_FILE_PATH ✅"
-          cp -f "$CONFIG_FILE_PATH" "$GITHUB_WORKSPACE/openwrt/.config"
-        else
-          echo "[ERROR] 配置文件未找到: $CONFIG_FILE_PATH ❌"
-          exit 1
-        fi
-
-    # 7. 配置缓存
-    - name: 配置编译缓存
+    - name: 恢复缓存
       uses: actions/cache@v3
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache-${{ github.sha }}
+        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
         restore-keys: |
-          ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache-
+          ${{ runner.os }}-openwrt-${{ env.DEVICE }}-
 
-    # 8. 准备构建环境和配置
-    - name: 准备构建环境和配置
+    - name: 配置 Feeds
       run: |
-        echo "[INFO] 配置 Feeds 和 Lan IP..."
+        echo "【步骤4】配置 Feeds"
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
-        sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
-        echo "[INFO] Lan IP 修改结果如下："
-        grep "192.168" package/base-files/files/bin/config_generate
-        echo "[INFO] Feeds 和 Lan IP 配置完成 ✅"
+        echo "Feeds 配置完成 ✅"
 
-    # 9. 下载依赖
+      # 修改 Lan IP 和修复版本
+    - name: 修改 Lan IP 和修复版本
+      run: |
+          echo "【步骤5】修改 Lan IP 和修复版本"
+          cd openwrt
+          sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
+          echo "【修改完成后内容如下】"
+          grep "192.168" package/base-files/files/bin/config_generate
+          echo "Lan IP 修改完成 ✅"
+
     - name: 下载依赖
       run: |
-        echo "[INFO] 开始下载依赖..."
-        cp -f $GITHUB_WORKSPACE/${{ env.CONFIG_FILE }} $GITHUB_WORKSPACE/openwrt/.config
+        echo "【步骤6】下载依赖"
+        cp -f $GITHUB_WORKSPACE/x86lean.config $GITHUB_WORKSPACE/openwrt/.config
         cd openwrt
         make defconfig
-        make download -j8
-        find dl -size -1024c -delete
-        echo "[INFO] 依赖下载完成 ✅"
+        make download -j$(nproc)
+        find dl -size -1024c -exec rm -f {} \;
+        echo "依赖下载完成 ✅"
 
-    # 10. 编译固件
     - name: 编译固件
       run: |
-        echo "[INFO] 开始编译固件..."
+        echo "【步骤7】编译固件"
         cd openwrt
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
         export CXX="ccache g++"
-        make -j8 || exit 1
+        make -j$(nproc)
         ccache -s
-        echo "[INFO] 固件编译完成 ✅"
+        echo "固件编译完成 ✅"
 
-    # 11. 发布固件至 Release
+    - name: 保存编译缓存
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
+
+    - name : 上传输出文件
+      uses: actions/upload-artifact@master
+      if: env.UPLOAD_OUTPUT == 'true' && !cancelled()
+      with:
+        name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
+        path: openwrt/bin/targets
+
+    
+    - name: 设置环境变量
+      run: |
+       echo "DEVICE=$(echo '${{ env.DEVICE }}' | tr -cd '[:alnum:]-_')" >> $GITHUB_ENV
+       echo "FILE_DATE=$(date +%Y-%m-%d_%H-%M)" >> $GITHUB_ENV
+
     - name: 发布固件至 Release
       uses: ncipollo/release-action@v1
       with:
-        tag: "${{ env.DEVICE }}-${{ env.FILE_DATE }}"
-        artifacts: "openwrt/bin/targets/x86/64/*.{img,gz}"
-        token: ${{ env.GITHUB_TOKEN }}
+          tag: "${{ env.DEVICE }}-${{ env.FILE_DATE }}"
+          artifacts: "openwrt/bin/targets/*/*/*"
+    
+
+          
