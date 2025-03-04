@@ -1,4 +1,4 @@
-name: 无法使用config OpenWrt x86lean
+name: 合成使用config OpenWrt x86lean
 
 on:
   workflow_dispatch:
