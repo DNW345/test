@@ -1,0 +1,161 @@
+name: 无法使用config OpenWrt x86lean
+
+on:
+  workflow_dispatch:
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  CONFIG_FILE: x86lean.config
+  TZ: Asia/Shanghai
+  DEVICE: x86lean
+  UPLOAD_OUTPUT: true
+  CCACHE_DIR: /workdir/openwrt/.ccache
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+jobs:
+  build-openwrt:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Delete Old Releases
+      uses: dev-drprasad/delete-older-releases@master
+      with:
+        keep_latest: 4
+        delete_tags: true
+
+    - name: Delete Old Workflow Runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        retain_days: 0
+        keep_minimum_runs: 1
+
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
+      with:
+    # this might remove tools that are actually needed,
+    # if set to "true" but frees about 6 GB
+        tool-cache: true
+    
+    # all of these default to true, but feel free to set to
+    # "false" if necessary for your workflow
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        swap-storage: true
+
+    - name: 初始化构建环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        echo "【步骤2】初始化构建环境"
+        sudo apt update -y
+        sudo apt full-upgrade -y
+        sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+        bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
+        genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
+        libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
+        libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
+        python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
+        swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+        sudo timedatectl set-timezone "Asia/Shanghai"
+        echo "构建环境初始化完成 ✅"
+
+    - name: 克隆源码
+      working-directory: /workdir
+      run: |
+        echo "【步骤3】克隆源码"
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        sudo mkdir -p -m 777 /mnt/openwrt/{dl,feeds,staging_dir}
+        ln -s /mnt/openwrt/dl /workdir/openwrt/dl
+        ln -s /mnt/openwrt/feeds /workdir/openwrt/feeds
+        ln -s /mnt/openwrt/staging_dir /workdir/openwrt/staging_dir
+        echo "源码克隆完成 ✅"
+
+    - name: Cache ccache
+      id: cache-ccache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache-${{ hashFiles(env.CONFIG_FILE) }}
+        restore-keys: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-
+
+    - name: 配置 Feeds
+      run: |
+        echo "【步骤4】配置 Feeds"
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        echo "Feeds 配置完成 ✅"
+
+    - name: 修改 Lan IP 和修复版本
+      run: |
+          echo "【步骤5】修改 Lan IP 和修复版本"
+          cd openwrt
+          sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
+          echo "【修改完成后内容如下】"
+          grep "192.168" package/base-files/files/bin/config_generate
+          echo "Lan IP 修改完成 ✅"
+
+    - name: 下载依赖
+      run: |
+        echo "【步骤6】下载依赖"
+        cp -f $GITHUB_WORKSPACE/x86lean.config $GITHUB_WORKSPACE/openwrt/.config
+        cd openwrt
+        make download -j$(nproc)
+        find dl -size -1024c -exec rm -f {} \;
+        echo "依赖下载完成 ✅"
+
+    - name: Download and Build
+      run: |
+        cd /workdir/openwrt
+        export CCACHE_DIR=$CCACHE_DIR
+        export CC="ccache gcc"
+        export CXX="ccache g++"
+        if [ "${{ steps.cache-ccache.outputs.cache-hit }}" != "true" ]; then
+          echo "Cache miss, performing full build..."
+          make -j$(nproc) V=s  # 完整编译
+        else
+          echo "Cache hit, skipping full build and generating images only..."
+          make -j$(nproc) V=s BUILD_IMAGE_ONLY=1  # 只生成镜像
+        fi
+        ccache -s
+
+    - name: Check Build Output
+      run: |
+        ls -lh /workdir/openwrt/bin/targets/x86/64/ || echo "Directory not found"
+
+    - name: Check ccache Directory
+      run: |
+        ls -lh /workdir/openwrt/.ccache || echo "ccache directory is empty"
+        du -sh /workdir/openwrt/.ccache || echo "Unable to measure size"
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.DEVICE }}-${{ github.run_id }}
+        path: /workdir/openwrt/bin/targets/x86/64/*
+
+    - name: Debug GITHUB_TOKEN
+      run: |
+        echo "GITHUB_TOKEN is set to: ${GITHUB_TOKEN:0:10}..."
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Release Firmware
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ env.DEVICE }}-${{ github.run_id }}
+        files: /workdir/openwrt/bin/targets/x86/64/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
