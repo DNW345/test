@@ -135,7 +135,7 @@ jobs:
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
         export CXX="ccache g++"
-        make -j$(nproc)
+        make -j$(nproc) V=s
         ccache -s
         echo "固件编译完成 ✅"
 
