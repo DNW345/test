@@ -102,6 +102,8 @@ jobs:
       run: |
         echo "【步骤4】配置 Feeds"
         cd openwrt
+        rm -rf package/helloworld
+        git clone --depth=1 https://github.com/fw876/helloworld.git package/helloworld
         ./scripts/feeds update -a
         ./scripts/feeds install -a
         echo "Feeds 配置完成 ✅"
