@@ -145,7 +145,7 @@ jobs:
         key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
 
     - name: 上传输出文件
-      uses: actions/upload-artifact@v3  # 保持 v3 版本
+      uses: actions/upload-artifact@master  # 保持 v3 版本
       if: env.UPLOAD_OUTPUT == 'true' && !cancelled()
       with:
        name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
