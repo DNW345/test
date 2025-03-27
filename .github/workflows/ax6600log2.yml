@@ -144,12 +144,13 @@ jobs:
         path: ${{ env.CCACHE_DIR }}
         key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
 
-    - name : 上传输出文件
-      uses: actions/upload-artifact@v3
+    - name: 上传输出文件
+      uses: actions/upload-artifact@v3  # 保持 v3 版本
       if: env.UPLOAD_OUTPUT == 'true' && !cancelled()
       with:
-        name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
-        path: openwrt/bin/targets
+       name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
+       path: openwrt/bin/targets
+
 
     - name: 设置环境变量
       run: |
