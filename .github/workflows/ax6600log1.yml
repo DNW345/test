@@ -1,0 +1,117 @@
+name: gdqax6600log1
+
+on:
+  schedule:
+    - cron: '0 15 */15 * *' # 每 15 天的 15:00 执行一次
+  workflow_dispatch:
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: gdqax6600.config
+  TZ: Asia/Shanghai
+  DEVICE: gdqax6600
+  UPLOAD_OUTPUT: true
+  CCACHE_DIR: /workdir/openwrt/.ccache
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  build-openwrt:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: 删除旧的 Releases 保留最近4个
+      uses: dev-drprasad/delete-older-releases@master
+      with:
+          keep_latest: 4
+          delete_tags: true
+
+    - name: 删除最近的workflow 保留最近1个
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+          retain_days: 0
+          keep_minimum_runs: 1
+
+    - name: 初始化构建环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        echo "【步骤1】初始化构建环境"
+        sudo apt update -y
+        sudo apt install -y build-essential clang flex bison g++ gawk \
+        gcc-multilib g++-multilib gettext libssl-dev libelf-dev zlib1g-dev \
+        python3 python3-pyelftools python3-setuptools ccache
+
+    - name: 克隆源码
+      working-directory: /workdir
+      run: |
+        echo "【步骤2】克隆源码"
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+    - name: 恢复缓存
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
+        restore-keys: |
+          ${{ runner.os }}-openwrt-${{ env.DEVICE }}-
+
+    - name: 配置 Feeds
+      run: |
+        echo "【步骤3】配置 Feeds"
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: 下载依赖
+      run: |
+        echo "【步骤4】下载依赖"
+        cp -f $GITHUB_WORKSPACE/gdqax6600.config $GITHUB_WORKSPACE/openwrt/.config
+        cd openwrt
+        make defconfig
+        make download -j$(nproc)
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: 实时编译 OpenWrt 并保存日志
+      run: |
+        echo "【步骤5】开始编译 OpenWrt"
+        cd openwrt
+
+        # 清理旧日志
+        rm -f $GITHUB_WORKSPACE/build.log
+
+        # 让日志文件实时写入 GitHub Actions 并保存到仓库根目录
+        (tail -f $GITHUB_WORKSPACE/build.log &)
+        make -j$(nproc) V=s 2>&1 | tee $GITHUB_WORKSPACE/build.log
+
+        echo "【编译完成】"
+
+    - name: 提交编译日志到仓库
+      run: |
+        echo "【步骤6】提交编译日志到仓库"
+        cd $GITHUB_WORKSPACE
+        git config --global user.name "github-actions"
+        git config --global user.email "github-actions@github.com"
+        git add build.log
+        git commit -m "🔍 编译日志 $(date '+%Y-%m-%d %H:%M:%S')"
+        git push || echo "⚠️ 无变化，无需推送"
+
+    - name : 上传编译输出
+      uses: actions/upload-artifact@v4
+      with:
+        name: openwrt-build-${{ env.FILE_DATE }}
+        path: openwrt/bin/targets
+
+    - name: 发布固件至 Release
+      uses: ncipollo/release-action@v1
+      with:
+        tag: "${{ env.DEVICE }}-${{ env.FILE_DATE }}"
+        artifacts: "openwrt/bin/targets/*/*/*"
