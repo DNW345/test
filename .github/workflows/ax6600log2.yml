@@ -27,11 +27,42 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: 删除旧的 Releases 保留最近4个
+      uses: dev-drprasad/delete-older-releases@master
+      with:
+          keep_latest: 4
+          delete_tags: true
+
+    - name: 删除最近的workflow 保留最近1个
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+          retain_days: 0
+          keep_minimum_runs: 1
+
+    - name: 检查配置文件是否存在
+      run: |
+        echo "【步骤1】检查配置文件"
+        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/gdqax6600.config"
+        if [[ -f "$CONFIG_FILE_PATH" ]]; then
+          echo "配置文件已找到: $CONFIG_FILE_PATH ✅"
+        else
+          echo "❌ 配置文件未找到，开始查找..."
+          CONFIG_FOUND=$(find $GITHUB_WORKSPACE -name "gdqax6600.config" -type f)
+          if [[ -n "$CONFIG_FOUND" ]]; then
+            echo "已找到配置文件路径: $CONFIG_FOUND ✅"
+            cp -f "$CONFIG_FOUND" "$GITHUB_WORKSPACE/openwrt/.config"
+            echo "成功复制配置文件到目标位置 ✅"
+          else
+            echo "❌ 未能找到 gdqax6600.config 文件，请确认文件是否存在于仓库中！"
+            exit 1
+          fi
+        fi
+
     - name: 初始化构建环境
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        echo "【步骤1】初始化构建环境"
+        echo "【步骤2】初始化构建环境"
         sudo apt update -y
         sudo apt full-upgrade -y
         sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
@@ -41,11 +72,15 @@ jobs:
         libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
         python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
         swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+        sudo timedatectl set-timezone "Asia/Shanghai"
+        echo "构建环境初始化完成 ✅"
 
     - name: 克隆源码
       working-directory: /workdir
       run: |
-        echo "【步骤2】克隆源码"
+        echo "【步骤3】克隆源码"
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
         sudo mkdir -p -m 777 /mnt/openwrt/{dl,feeds,staging_dir}
@@ -54,9 +89,17 @@ jobs:
         ln -s /mnt/openwrt/staging_dir /workdir/openwrt/staging_dir
         echo "源码克隆完成 ✅"
 
+    - name: 恢复缓存
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
+        restore-keys: |
+          ${{ runner.os }}-openwrt-${{ env.DEVICE }}-
+
     - name: 配置 Feeds
       run: |
-        echo "【步骤3】配置 Feeds"
+        echo "【步骤4】配置 Feeds"
         cd openwrt
         rm -rf package/helloworld
         git clone --depth=1 https://github.com/fw876/helloworld.git package/helloworld
@@ -64,9 +107,18 @@ jobs:
         ./scripts/feeds install -a
         echo "Feeds 配置完成 ✅"
 
+    - name: 修改 Lan IP 和修复版本
+      run: |
+          echo "【步骤5】修改 Lan IP 和修复版本"
+          cd openwrt
+          sed -i 's/192.168.1.1/192.168.0.1/g' package/base-files/files/bin/config_generate
+          echo "【修改完成后内容如下】"
+          grep "192.168" package/base-files/files/bin/config_generate
+          echo "Lan IP 修改完成 ✅"
+
     - name: 下载依赖
       run: |
-        echo "【步骤4】下载依赖"
+        echo "【步骤6】下载依赖"
         cp -f $GITHUB_WORKSPACE/gdqax6600.config $GITHUB_WORKSPACE/openwrt/.config
         cd openwrt
         make defconfig
@@ -74,26 +126,26 @@ jobs:
         find dl -size -1024c -exec rm -f {} \;
         echo "依赖下载完成 ✅"
 
-    - name: 编译固件并保存日志到仓库根目录
+    - name: 编译固件
       run: |
-        echo "【步骤5】编译固件并保存日志到仓库根目录"
+        echo "【步骤7】编译固件"
         cd openwrt
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
         export CXX="ccache g++"
-        # 将日志同时输出到控制台和仓库根目录的 log2.log 文件
-        make -j$(nproc) 2>&1 | tee $GITHUB_WORKSPACE/log2.log
+        mkdir -p $GITHUB_WORKSPACE/logs
+        make -j$(nproc) | tee $GITHUB_WORKSPACE/logs/log2
         ccache -s
         echo "固件编译完成 ✅"
 
-    - name: 上传日志文件到 GitHub Actions
-      uses: actions/upload-artifact@v3
+    - name: 保存编译缓存
+      uses: actions/cache@v3
       with:
-        name: build-log
-        path: $GITHUB_WORKSPACE/log2.log
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ runner.os }}-openwrt-${{ env.DEVICE }}-ccache
 
-    - name: 上传输出文件
-      uses: actions/upload-artifact@v3
+    - name : 上传输出文件
+      uses: actions/upload-artifact@v2
       if: env.UPLOAD_OUTPUT == 'true' && !cancelled()
       with:
         name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
@@ -101,11 +153,11 @@ jobs:
 
     - name: 设置环境变量
       run: |
-        echo "DEVICE=$(echo '${{ env.DEVICE }}' | tr -cd '[:alnum:]-_')" >> $GITHUB_ENV
-        echo "FILE_DATE=$(date +%Y-%m-%d_%H-%M)" >> $GITHUB_ENV
+       echo "DEVICE=$(echo '${{ env.DEVICE }}' | tr -cd '[:alnum:]-_')" >> $GITHUB_ENV
+       echo "FILE_DATE=$(date +%Y-%m-%d_%H-%M)" >> $GITHUB_ENV
 
     - name: 发布固件至 Release
       uses: ncipollo/release-action@v1
       with:
-        tag: "${{ env.DEVICE }}-${{ env.FILE_DATE }}"
-        artifacts: "openwrt/bin/targets/*/*/*"
+          tag: "${{ env.DEVICE }}-${{ env.FILE_DATE }}"
+          artifacts: "openwrt/bin/targets/*/*/*"
