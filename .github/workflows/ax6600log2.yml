@@ -1,4 +1,4 @@
-name: gdqax6600log2
+name: gdqax6600
 
 on:
   schedule:
@@ -81,8 +81,8 @@ jobs:
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
         export CXX="ccache g++"
-        # 将日志同时输出到控制台和仓库根目录的 build.log 文件
-        make -j$(nproc) 2>&1 | tee $GITHUB_WORKSPACE/build.log
+        # 将日志同时输出到控制台和仓库根目录的 log2.log 文件
+        make -j$(nproc) 2>&1 | tee $GITHUB_WORKSPACE/log2.log
         ccache -s
         echo "固件编译完成 ✅"
 
@@ -90,7 +90,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: build-log
-        path: $GITHUB_WORKSPACE/build.log
+        path: $GITHUB_WORKSPACE/log2.log
 
     - name: 上传输出文件
       uses: actions/upload-artifact@v3
