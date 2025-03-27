@@ -55,33 +55,34 @@ jobs:
     - name: 下载依赖
       run: |
         echo "【步骤6】下载依赖"
-        cp -f $GITHUB_WORKSPACE/gdqax6600.config $GITHUB_WORKSPACE/openwrt/.config
+        cp -f $GITHUB_WORKSPACE/$CONFIG_FILE $GITHUB_WORKSPACE/openwrt/.config
         cd openwrt
         make defconfig
         make download -j$(nproc)
         find dl -size -1024c -exec rm -f {} \;
 
-    - name: 编译固件
+    - name: 编译固件并保存日志
       run: |
         echo "【步骤7】编译固件"
         cd openwrt
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
         export CXX="ccache g++"
-        make -j$(nproc) V=s | tee build.log
+        make -j$(nproc) V=s | tee log0 | tee $GITHUB_WORKSPACE/shishilog0 || echo "编译失败，查看 log0 获取详细信息"
 
     - name: 上传编译日志
       uses: actions/upload-artifact@v4
       with:
         name: build-log
-        path: openwrt/build.log
+        path: openwrt/log0
 
     - name: 提交编译日志到仓库
       if: always()
       run: |
         git config --global user.name "github-actions"
         git config --global user.email "github-actions@github.com"
-        cp openwrt/build.log $GITHUB_WORKSPACE/build.log
-        git add build.log
+        cp openwrt/log0 $GITHUB_WORKSPACE/log0
+        cp openwrt/log0 $GITHUB_WORKSPACE/shishilog0
+        git add log0 shishilog0
         git commit -m "上传最新编译日志" || echo "No changes to commit"
         git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
