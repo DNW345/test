@@ -135,9 +135,10 @@ jobs:
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
         export CXX="ccache g++"
-        make -j$(nproc) V=s 2>&1 | grep -i "error" | grep -i "failed to build"
+        make -j$(nproc) V=s 2>&1 | tee $GITHUB_WORKSPACE/build.log
         ccache -s
         echo "固件编译完成 ✅"
+
 
     - name: 保存编译缓存
       uses: actions/cache@v3
