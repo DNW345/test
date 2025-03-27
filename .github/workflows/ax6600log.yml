@@ -1,4 +1,4 @@
-name: gdqax6600
+name: gdqax6600log
 
 on:
   schedule:
@@ -8,13 +8,12 @@ on:
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
-  FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: gdqax6600.config
   TZ: Asia/Shanghai
   DEVICE: gdqax6600
   UPLOAD_OUTPUT: true
   CCACHE_DIR: /workdir/openwrt/.ccache
-  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   build-openwrt:
@@ -27,32 +26,10 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: 删除旧的 Releases 保留最近 4 个
-      uses: dev-drprasad/delete-older-releases@master
-      with:
-          keep_latest: 4
-          delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: 删除最近的 Workflow 运行记录（保留最近 1 个）
-      uses: Mattraks/delete-workflow-runs@v2
-      with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          retain_days: 1
-          keep_minimum_runs: 1
-
-    - name: 检查配置文件是否存在
+    - name: 创建工作目录
       run: |
-        echo "【步骤1】检查配置文件"
-        CONFIG_FILE_PATH="$GITHUB_WORKSPACE/gdqax6600.config"
-        if [[ -f "$CONFIG_FILE_PATH" ]]; then
-          echo "配置文件已找到 ✅"
-        else
-          echo "❌ 配置文件未找到，请检查仓库！"
-          exit 1
-        fi
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
 
     - name: 初始化构建环境
       env:
@@ -60,15 +37,13 @@ jobs:
       run: |
         echo "【步骤2】初始化构建环境"
         sudo apt update -y
-        sudo apt full-upgrade -y
-        sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-        bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
-        genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
-        libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
-        libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
-        python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
-        swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-        echo "构建环境初始化完成 ✅"
+        sudo apt install -y ack autoconf automake binutils bison build-essential \
+        bzip2 ccache clang cmake curl flex gawk gcc-multilib g++-multilib gettext \
+        git gperf intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev \
+        libmpc-dev libmpfr-dev libncurses5-dev libpython3-dev libssl-dev libtool \
+        lrzsz ninja-build p7zip-full patch pkgconf python3 python3-setuptools \
+        rsync squashfs-tools subversion swig texinfo unzip vim wget xxd zlib1g-dev
+        sudo timedatectl set-timezone "Asia/Shanghai"
 
     - name: 克隆源码
       working-directory: /workdir
@@ -76,44 +51,30 @@ jobs:
         echo "【步骤3】克隆源码"
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-        echo "源码克隆完成 ✅"
-
-    - name: 配置 Feeds
-      run: |
-        echo "【步骤4】配置 Feeds"
-        cd openwrt
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
-        echo "Feeds 配置完成 ✅"
 
     - name: 下载依赖
       run: |
-        echo "【步骤5】下载依赖"
+        echo "【步骤6】下载依赖"
         cp -f $GITHUB_WORKSPACE/gdqax6600.config $GITHUB_WORKSPACE/openwrt/.config
         cd openwrt
         make defconfig
         make download -j$(nproc)
         find dl -size -1024c -exec rm -f {} \;
-        echo "依赖下载完成 ✅"
 
-    - name: 编译固件（实时日志 + 保存日志）
+    - name: 编译固件
       run: |
-        echo "【步骤6】编译固件"
+        echo "【步骤7】编译固件"
         cd openwrt
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
         export CXX="ccache g++"
         make -j$(nproc) V=s | tee build.log
-        ccache -s
-        echo "固件编译完成 ✅"
 
-    - name: 上传编译日志到 Actions Artifacts
-      if: always()
+    - name: 上传编译日志
       uses: actions/upload-artifact@v4
       with:
         name: build-log
         path: openwrt/build.log
-        retention-days: 7
 
     - name: 提交编译日志到仓库
       if: always()
@@ -122,24 +83,5 @@ jobs:
         git config --global user.email "github-actions@github.com"
         cp openwrt/build.log $GITHUB_WORKSPACE/build.log
         git add build.log
-        git commit -m "上传最新编译日志"
-        git push
-
-    - name: 上传输出文件
-      uses: actions/upload-artifact@v4
-      if: env.UPLOAD_OUTPUT == 'true' && !cancelled()
-      with:
-        name: ${{ env.DEVICE }}--${{ env.FILE_DATE }}
-        path: openwrt/bin/targets
-        retention-days: 7
-
-    - name: 设置环境变量
-      run: |
-        echo "DEVICE=$(echo '${{ env.DEVICE }}' | tr -cd '[:alnum:]-_')" >> $GITHUB_ENV
-        echo "FILE_DATE=$(date +%Y-%m-%d_%H-%M)" >> $GITHUB_ENV
-
-    - name: 发布固件至 Release
-      uses: ncipollo/release-action@v1
-      with:
-        tag: "${{ env.DEVICE }}-${{ env.FILE_DATE }}"
-        artifacts: "openwrt/bin/targets/*/*/*"
+        git commit -m "上传最新编译日志" || echo "No changes to commit"
+        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
