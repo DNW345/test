@@ -135,7 +135,7 @@ jobs:
         export CCACHE_DIR=${{ env.CCACHE_DIR }}
         export CC="ccache gcc"
         export CXX="ccache g++"
-        make -j$(nproc) V=s 2>&1 | tee $GITHUB_WORKSPACE/build.log
+        make -j$(nproc)
         ccache -s
         echo "固件编译完成 ✅"
 
